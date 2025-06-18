@@ -1,240 +1,144 @@
-/**
- * 用户认证状态管理模块
- * 功能：
- * 1. 检查用户登录状态
- * 2. 更新用户界面显示
- * 3. 处理用户注销
- * 4. 管理用户头像缓存
- */
+// 初始化Firebase（优化：使用const替代var）
+const app = firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const database = firebase.database();
 
-// 配置常量
-const CONFIG = {
-  selectors: {
-    loggedIn: '.isLogin',
-    loggedOut: '.notLogin',
-    userName: '.data-name',
-    userStatus: '.data-status',
-    userPhone: '.data-phone',
-    userEmail: '.data-email',
-    accountType: '.data-tipeAkun',
-    userWebsite: '.data-website',
-    premiumAccount: '.data-premiumAcc',
-    premiumExpiry: '.data-expired',
-    premiumPackage: '.data-paketPremium',
-    userProfileImage: '.userProfil',
-    premiumLinks: '.linkPremium',
-    premiumUserElements: '.userPremium'
-  },
-  storageKeys: {
-    profileImage: 'userProfileImage',
-    userData: 'user'
-  },
-  defaultValues: {
-    name: 'Belum diatur',
-    status: 'Member',
-    phone: 'Belum diatur',
-    email: 'Tidak tersedia',
-    accountType: 'Publik',
-    website: 'Belum diatur',
-    premium: 'Non Premium',
-    package: 'Basic',
-    expiry: 'Tidak tersedia'
-  },
-  paths: {
-    users: 'users/'
+// DOM元素选择器常量（优化：提取常用选择器）
+const SELECTORS = {
+  LOGGED_IN: ".isLogin",
+  LOGGED_OUT: ".notLogin",
+  PROFILE_IMG: ".userProfil",
+  PREMIUM_LINK: ".linkPremium",
+  USER_PREMIUM: ".userPremium",
+  DATA_FIELDS: {
+    NAME: ".data-name",
+    STATUS: ".data-status",
+    PHONE: ".data-phone",
+    PREMIUM: ".data-premiumAcc",
+    EMAIL: ".data-email",
+    EXPIRED: ".data-expired",
+    ACCOUNT_TYPE: ".data-tipeAkun",
+    WEBSITE: ".data-website",
+    PACKAGE: ".data-paketPremium"
   }
 };
 
-/**
- * 检查并更新登录状态
- */
-function checkLoginStatus() {
-  // 监听认证状态变化
-  auth.onAuthStateChanged(user => {
-    if (user && user.emailVerified) {
-      handleLoggedInUser(user);
-    } else {
-      handleLoggedOutUser();
-    }
-  });
-
-  // 加载缓存的用户头像
-  loadSavedProfileImage();
-}
+// 默认值常量（优化：集中管理默认值）
+const DEFAULT_VALUES = {
+  NAME: "Belum diatur",
+  STATUS: "Member",
+  PHONE: "Belum diatur",
+  EMAIL: "Tidak tersedia",
+  EXPIRED: "Tidak tersedia",
+  ACCOUNT_TYPE: "Publik",
+  WEBSITE: "Belum diatur",
+  PACKAGE: "Basic",
+  PREMIUM_TEXT: "Premium",
+  NON_PREMIUM_TEXT: "Non Premium"
+};
 
 /**
- * 处理已登录用户
- * @param {Object} user Firebase用户对象
+ * 更新元素内容（优化：提取公共函数）
+ * @param {string} selector - 选择器
+ * @param {string} value - 值
+ * @param {string} [defaultValue=""] - 默认值
  */
-function handleLoggedInUser(user) {
-  // 显示登录状态的UI元素
-  toggleLoginElements(true);
-  
-  // 从数据库获取用户详细信息
-  database.ref(`${CONFIG.paths.users}${user.uid}`).once('value').then(snapshot => {
-    const userData = snapshot.val();
-    
-    if (userData) {
-      // 更新用户信息显示
-      updateUserInfoDisplay(userData);
-      
-      // 处理用户头像
-      handleProfileImage(userData.image);
-      
-      // 处理Premium会员状态
-      handlePremiumStatus(userData);
-    }
-  });
-}
-
-/**
- * 处理未登录用户
- */
-function handleLoggedOutUser() {
-  // 隐藏登录状态元素，显示未登录元素
-  toggleLoginElements(false);
-  
-  // 清除缓存的用户头像
-  localStorage.removeItem(CONFIG.storageKeys.profileImage);
-  
-  // 重置所有头像元素
-  document.querySelectorAll(CONFIG.selectors.userProfileImage).forEach(img => {
-    img.src = '';
-  });
-}
-
-/**
- * 切换登录/未登录UI元素
- * @param {boolean} isLoggedIn 是否已登录
- */
-function toggleLoginElements(isLoggedIn) {
-  // 显示/隐藏登录状态元素
-  document.querySelectorAll(CONFIG.selectors.loggedIn).forEach(el => {
-    el.style.display = isLoggedIn ? 'block' : 'none';
-  });
-  
-  // 显示/隐藏未登录元素
-  document.querySelectorAll(CONFIG.selectors.loggedOut).forEach(el => {
-    el.style.display = isLoggedIn ? 'none' : 'block';
-  });
-}
-
-/**
- * 更新用户信息显示
- * @param {Object} userData 用户数据对象
- */
-function updateUserInfoDisplay(userData) {
-  // 更新基本信息
-  updateElementText(CONFIG.selectors.userName, userData.name);
-  updateElementText(CONFIG.selectors.userStatus, userData.status);
-  updateElementText(CONFIG.selectors.userPhone, userData.phone);
-  updateElementText(CONFIG.selectors.userEmail, userData.email);
-  updateElementText(CONFIG.selectors.accountType, userData.tipeAkun);
-  updateElementText(CONFIG.selectors.userWebsite, userData.website);
-  
-  // 更新Premium信息
-  updateElementText(
-    CONFIG.selectors.premiumAccount, 
-    userData.premiumAcc ? 'Premium' : 'Non Premium'
-  );
-  updateElementText(CONFIG.selectors.premiumExpiry, userData.expired);
-  updateElementText(CONFIG.selectors.premiumPackage, userData.paketPremium);
-}
-
-/**
- * 更新DOM元素的文本内容
- * @param {string} selector 选择器
- * @param {string} value 值
- * @param {string} defaultValue 默认值
- */
-function updateElementText(selector, value, defaultValue) {
-  const fallbackValue = defaultValue || CONFIG.defaultValues[selector.split('-')[1]] || '';
+function updateElements(selector, value, defaultValue = "") {
   document.querySelectorAll(selector).forEach(el => {
-    el.textContent = value || fallbackValue;
+    el.textContent = value || defaultValue;
   });
 }
 
-/**
- * 处理用户头像
- * @param {string} imageUrl 头像URL
- */
-function handleProfileImage(imageUrl) {
-  if (imageUrl) {
-    // 保存到本地存储
-    localStorage.setItem(CONFIG.storageKeys.profileImage, imageUrl);
+function cekStatusLogin() {
+  auth.onAuthStateChanged(user => {
+    const isLoggedIn = user && user.emailVerified;
     
-    // 更新所有头像元素
-    document.querySelectorAll(CONFIG.selectors.userProfileImage).forEach(img => {
-      img.src = imageUrl;
+    // 更新UI可见性（优化：提取逻辑）
+    document.querySelectorAll(SELECTORS.LOGGED_IN).forEach(el => {
+      el.style.display = isLoggedIn ? "block" : "none";
     });
-  }
-}
+    document.querySelectorAll(SELECTORS.LOGGED_OUT).forEach(el => {
+      el.style.display = isLoggedIn ? "none" : "block";
+    });
 
-/**
- * 处理Premium会员状态
- * @param {Object} userData 用户数据
- */
-function handlePremiumStatus(userData) {
-  const today = new Date().toISOString().split('T')[0];
-  const isPremiumActive = userData.premiumAcc && 
-                         userData.expired && 
-                         userData.expired >= today;
-  
-  // 更新Premium用户专属元素的显示
-  document.querySelectorAll(CONFIG.selectors.premiumUserElements).forEach(el => {
-    el.style.display = isPremiumActive ? 'block' : 'none';
-  });
-  
-  // 更新Premium链接
-  updatePremiumLinks(isPremiumActive);
-}
+    if (isLoggedIn) {
+      const userId = user.uid;
+      database.ref("users/" + userId).once("value").then(snapshot => {
+        const userData = snapshot.val();
+        
+        if (userData) {
+          // 更新用户数据（优化：使用常量）
+          updateElements(SELECTORS.DATA_FIELDS.NAME, userData.name, DEFAULT_VALUES.NAME);
+          updateElements(SELECTORS.DATA_FIELDS.STATUS, userData.status, DEFAULT_VALUES.STATUS);
+          updateElements(SELECTORS.DATA_FIELDS.PHONE, userData.phone, DEFAULT_VALUES.PHONE);
+          updateElements(SELECTORS.DATA_FIELDS.EMAIL, userData.email, DEFAULT_VALUES.EMAIL);
+          updateElements(SELECTORS.DATA_FIELDS.EXPIRED, userData.expired, DEFAULT_VALUES.EXPIRED);
+          updateElements(SELECTORS.DATA_FIELDS.ACCOUNT_TYPE, userData.tipeAkun, DEFAULT_VALUES.ACCOUNT_TYPE);
+          updateElements(SELECTORS.DATA_FIELDS.WEBSITE, userData.website, DEFAULT_VALUES.WEBSITE);
+          updateElements(SELECTORS.DATA_FIELDS.PACKAGE, userData.paketPremium, DEFAULT_VALUES.PACKAGE);
+          
+          // 更新会员状态
+          updateElements(
+            SELECTORS.DATA_FIELDS.PREMIUM, 
+            userData.premiumAcc ? DEFAULT_VALUES.PREMIUM_TEXT : DEFAULT_VALUES.NON_PREMIUM_TEXT
+          );
 
-/**
- * 更新Premium相关链接
- * @param {boolean} isPremiumActive 是否是有效Premium会员
- */
-function updatePremiumLinks(isPremiumActive) {
-  document.querySelectorAll(CONFIG.selectors.premiumLinks).forEach(link => {
-    const premiumUrl = link.getAttribute('data-premium-href');
-    const regularUrl = link.getAttribute('data-nonpremium-href');
-    
-    if (isPremiumActive && premiumUrl) {
-      link.setAttribute('href', premiumUrl);
-    } else if (regularUrl) {
-      link.setAttribute('href', regularUrl);
+          // 更新头像
+          if (userData.image) {
+            localStorage.setItem("userProfileImage", userData.image);
+            document.querySelectorAll(SELECTORS.PROFILE_IMG).forEach(img => {
+              img.src = userData.image;
+            });
+          }
+
+          // 处理高级会员状态（优化：提取逻辑）
+          const today = new Date().toISOString().split("T")[0];
+          const isPremiumValid = userData.premiumAcc && userData.expired && userData.expired >= today;
+          
+          document.querySelectorAll(SELECTORS.USER_PREMIUM).forEach(el => {
+            el.style.display = isPremiumValid ? "none" : "block";
+          });
+          
+          document.querySelectorAll(SELECTORS.PREMIUM_LINK).forEach(link => {
+            const premiumHref = link.getAttribute("data-premium-href");
+            const nonPremiumHref = link.getAttribute("data-nonpremium-href");
+            
+            if (isPremiumValid && premiumHref) {
+              link.setAttribute("href", premiumHref);
+            } else if (nonPremiumHref) {
+              link.setAttribute("href", nonPremiumHref);
+            }
+          });
+        }
+      });
+    } else {
+      // 清除未登录用户数据
+      document.querySelectorAll(SELECTORS.PROFILE_IMG).forEach(img => {
+        img.src = "";
+      });
+      localStorage.removeItem("userProfileImage");
     }
   });
 }
 
-/**
- * 加载保存的用户头像
- */
-function loadSavedProfileImage() {
-  const savedImage = localStorage.getItem(CONFIG.storageKeys.profileImage);
-  if (savedImage) {
-    document.querySelectorAll(CONFIG.selectors.userProfileImage).forEach(img => {
-      img.src = savedImage;
-    });
-  }
-}
-
-/**
- * 注销用户
- */
 function logoutUser() {
-  firebase.auth().signOut()
-    .then(() => {
-      alert(igneliusLoginJS.messages);
-      // 清除本地存储
-      localStorage.removeItem(CONFIG.storageKeys.userData);
-      localStorage.removeItem(CONFIG.storageKeys.profileImage);
-      // 重定向
-      window.location.href = igneliusLoginJS.logoutRedirect;
-    })
-    .catch(() => {
-      alert(igneliusLoginJS.logoutGagal);
-    });
+  auth.signOut().then(() => {
+    alert(igneliusLoginJS.logoutSukses);
+    localStorage.removeItem("user");
+    localStorage.removeItem("userProfileImage");
+    window.location.href = igneliusLoginJS.loginPage;
+  }).catch(() => {
+    alert(igneliusLoginJS.logoutGagal);
+  });
 }
 
-// 初始化检查登录状态
-checkLoginStatus();
+// 初始化：加载保存的头像（优化：使用常量选择器）
+const savedProfileImage = localStorage.getItem("userProfileImage");
+if (savedProfileImage) {
+  document.querySelectorAll(SELECTORS.PROFILE_IMG).forEach(img => {
+    img.src = savedProfileImage;
+  });
+}
+
+// 启动登录状态检查
+cekStatusLogin();
