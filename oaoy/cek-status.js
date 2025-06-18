@@ -1,16 +1,19 @@
+/**
+ * 检查用户登录状态的主函数
+ */
 function cekStatusLogin() {
   // 监听用户认证状态变化
   auth.onAuthStateChanged(function(user) {
     // 用户已登录且邮箱已验证
     if (user && user.emailVerified) {
       // 显示已登录状态的UI元素
-      document.querySelectorAll(".belumLog").forEach(function(element) {
-        element.classList.remove('hidden');
+      document.querySelectorAll(".isLogin").forEach(function(element) {
+        element.style.display = "block";
       });
       
       // 隐藏未登录状态的UI元素
-      document.querySelectorAll(".sudahLog").forEach(function(element) {
-        element.classList.add('hidden');
+      document.querySelectorAll(".notLogin").forEach(function(element) {
+        element.style.display = "none";
       });
 
       // 获取用户ID并查询用户数据
@@ -49,6 +52,15 @@ function cekStatusLogin() {
             el.textContent = userData.expired || "Tidak tersedia"; // 默认显示"不可用"
           });
           
+          // 更新账户类型显示
+          document.querySelectorAll(".data-tipeAkun").forEach(function(el) {
+            el.textContent = userData.tipeAkun || "Publik"; // 默认显示"公开"
+          });
+          
+          // 更新网站信息显示
+          document.querySelectorAll(".data-website").forEach(function(el) {
+            el.textContent = userData.website || "Belum diatur"; // 默认显示"未设置"
+          });
           
           // 更新会员套餐显示
           document.querySelectorAll(".data-paketPremium").forEach(function(el) {
